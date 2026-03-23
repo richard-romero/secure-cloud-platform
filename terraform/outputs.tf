@@ -30,3 +30,7 @@ output "instance_public_ip" {
 output "instance_id" {
   value = aws_instance.web.id
 }
+
+output "ssh_command" {
+  value = "ssh -i ~/.ssh/${var.key_pair_name} ec2-user@${aws_instance.web.public_ip}"
+}

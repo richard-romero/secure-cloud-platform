@@ -86,11 +86,11 @@ resource "aws_security_group" "web_sg" {
     cidr_blocks = ["24.170.200.152/32"]
   }
 
-  # App port 
+  # HTTP port
   ingress {
-    description = "App traffic"
-    from_port   = 3000
-    to_port     = 3000
+    description = "Allow HTTP requests"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -172,6 +172,14 @@ resource "aws_instance" "web" {
 
   associate_public_ip_address = true
 
+  user_data = file("${path.module}/user_data.sh")
+
+  lifecycle {
+    replace_triggered_by = [
+      terraform_data.user_data_hash
+    ]
+  }
+
   metadata_options {
     http_tokens = "required"
   }
@@ -181,4 +189,8 @@ resource "aws_instance" "web" {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+}
+
+resource "terraform_data" "user_data_hash" {
+  input = filesha256("${path.module}/user_data.sh")
 }
