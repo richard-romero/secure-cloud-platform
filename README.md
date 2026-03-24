@@ -10,11 +10,12 @@ This project sets up a secure, highly-available foundation in AWS using Terrafor
 * **Bash user-data** automates the installation and configuration of an Nginx web server on boot.
 * **IAM Instance Profiles** are attached with CloudWatch policies for automated monitoring rights.
 * **Network topology** spans a VPC with isolated public (10.0.1.0/24) and private (10.0.2.0/24) subnets.
+* **Remote Backend** securely stores the generated Terraform state (`terraform.tfstate`) inside an S3 bucket for reliable management.
 
 ## Tech Stack
 
-* **AWS** (EC2, VPC, IAM, CloudWatch)
-* **Terraform** (Infrastructure as Code)
+* **AWS** (EC2, VPC, IAM, CloudWatch, S3)
+* **Terraform** (Infrastructure as Code, Remote State)
 * **Linux** (Amazon Linux 2023 ARM64)
 * **Bash Scripting** (Server bootstrapping)
 * **Nginx** (Web server)
@@ -22,6 +23,7 @@ This project sets up a secure, highly-available foundation in AWS using Terrafor
 ## Features
 
 * **Infrastructure Provisioning:** Fully automated deployment of VPC, subnets, route tables, and gateways.
+* **Remote State Management:** `terraform.tfstate` is securely stored in an AWS S3 bucket to prevent local data loss and keep infrastructure variables protected.
 * **Automated Bootstrapping:** EC2 instances are pre-configured with Nginx via `user_data.sh`.
 * **IAM Least-Privilege:** EC2 instances use attached roles rather than hardcoded credentials.
 * **Network Segmentation:** Defined Public & Private subnets with highly restrictive Security Groups (e.g., SSH restricted to a specific IP, Web access enabled on port 80).
@@ -71,6 +73,7 @@ flowchart TD
 * **Restricted SSH Access:** Port 22 inbound rules are locked down to a single specific IP (`24.170.200.152`).
 * **Subnet Segmentation:** Resources that don't need internet accessibility can be stored in the pre-configured private subnet.
 * **Instance Metadata Service:** Implemented `http_tokens = "required"` (IMDSv2) to prevent SSRF vulnerabilities.
+* **State File Security:** Remote S3 bucket is utilized to stop sensitive infrastructure information, passwords, and IDs from leaking into local source code controllers.
 
 ## Lessons Learned
 
