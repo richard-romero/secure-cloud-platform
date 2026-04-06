@@ -5,9 +5,12 @@ set -eux
 dnf update -y
 
 # Utilities
-dnf install -y nano
+dnf install -y nano git docker amazon-cloudwatch-agent
 
-# Install CloudWatch Agent
-dnf install -y amazon-cloudwatch-agent
+systemctl enable docker
+systemctl start docker
+
+usermod -aG docker ec2-user
+
 systemctl enable amazon-cloudwatch-agent
 systemctl start amazon-cloudwatch-agent
