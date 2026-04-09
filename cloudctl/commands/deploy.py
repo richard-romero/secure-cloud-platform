@@ -36,14 +36,37 @@ def wait_for_ssh_ready(host: str, key_path: str, user: str, retries: int = 20, d
 
 def deploy_container(ssh: SSHClient, image: str = IMAGE, container: str = CONTAINER) -> tuple[str, str]:
     """Deploy (or redeploy) the application container on the target host."""
-    commands = (
-        "set -euo pipefail\n"
-        "sudo systemctl start docker\n"
-        f"sudo docker pull {image}\n"
-        f"sudo docker rm -f {container} >/dev/null 2>&1 || true\n"
-        f"sudo docker run -d --name {container} -p 80:80 --restart unless-stopped {image}\n"
-    )
-    return ssh.run(command=commands, check=True)
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    commands = [
+        "if ! sudo systemctl list-unit-files | grep -q '^docker\\.service'; then sudo dnf install -y docker; fi",
+        "sudo systemctl enable --now docker",
+        f"sudo docker pull {image}",
+        f"sudo docker rm -f {container} >/dev/null 2>&1 || true",
+        f"sudo docker run -d --name {container} -p 80:80 --restart unless-stopped {image}",
+    ]
+
+    for command in commands:
+        out, err = ssh.run(command=command, check=True)
+        if out.strip():
+            stdout_chunks.append(out.strip())
+        if err.strip():
+            stderr_chunks.append(err.strip())
+
+    out, err = ssh.run("sudo docker ps --format '{{.Names}}'", check=True)
+    running_containers = {name.strip() for name in out.splitlines() if name.strip()}
+    if container not in running_containers:
+        raise RuntimeError(
+            f"Container '{container}' is not running after deploy. docker ps output: {out.strip() or '<empty>'}"
+        )
+
+    if out.strip():
+        stdout_chunks.append(out.strip())
+    if err.strip():
+        stderr_chunks.append(err.strip())
+
+    return "\n".join(stdout_chunks), "\n".join(stderr_chunks)
 
 
 @app.callback(invoke_without_command=True)
