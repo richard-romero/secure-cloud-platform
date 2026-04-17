@@ -1,11 +1,10 @@
-import time
 import typer
 from ssh.client import SSHClient, get_terraform_outputs, load_settings
 
 app = typer.Typer()
 CONTAINER = "webapp"
 
-STATUS_COMMANDS: list[tuple[str, str]] = [
+STATUS_COMMANDS = [
     (
         "Host runtime",
         "echo \"Host: $(hostname)\" && echo \"Kernel: $(uname -srmo)\" && uptime",
@@ -29,24 +28,20 @@ STATUS_COMMANDS: list[tuple[str, str]] = [
 
 
 def show_command_output(ssh: SSHClient, title: str, command: str) -> None:
-    """Execute a remote command and print developer-focused status output."""
+    """Run one status command and print its output."""
     typer.echo(f"\n[STATUS] {title}")
-    typer.echo(f"[INFO] Command: {command}")
 
     out, err = ssh.run(command)
-    if out.strip():
-        typer.echo(out.strip())
-    else:
-        typer.echo("[INFO] No stdout output")
+    if out:
+        typer.echo(out.rstrip())
 
-    if err.strip():
-        typer.echo(f"[WARN] {err.strip()}")
+    if err:
+        typer.echo(f"[WARN] {err.rstrip()}")
+
 
 @app.callback(invoke_without_command=True)
-def status():
+def status() -> None:
     """Collect runtime and service status details from the target host."""
-    start = time.perf_counter()
-
     typer.echo("[INFO] Retrieving infrastructure info...")
 
     try:
@@ -71,9 +66,7 @@ def status():
                 show_command_output(ssh, title=title, command=command)
 
             containers_out, _ = ssh.run("sudo docker ps --format '{{.Names}}'")
-            running_containers = {name.strip() for name in containers_out.splitlines() if name.strip()}
-
-            if CONTAINER in running_containers:
+            if CONTAINER in containers_out.splitlines():
                 show_command_output(
                     ssh,
                     title=f"Recent {CONTAINER} logs",
@@ -95,4 +88,4 @@ def status():
     typer.echo(f"- {ssh_command} \"sudo docker inspect {CONTAINER}\"")
     typer.echo(f"- {ssh_command} \"sudo ss -tulpen\"")
 
-    typer.echo(f"\n[SUCCESS] Status collection complete in {time.perf_counter() - start:.2f}s")
+    typer.echo("\n[SUCCESS] Status collection complete.")
