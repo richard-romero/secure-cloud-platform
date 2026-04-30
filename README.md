@@ -1,82 +1,45 @@
-# Secure Cloud DevOps Platform
+# Secure Cloud Platform
 
-**Infrastructure-as-Code AWS environment with automated deployment, networking, and security controls.**
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Terraform](https://img.shields.io/badge/Terraform-IaC-623CE4.svg)](https://www.terraform.io/)
+[![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900.svg)](https://aws.amazon.com/)
 
-## Architecture Overview
+**An end-to-end cloud environment automation project showcasing Infrastructure as Code (IaC) principles and custom CLI tooling.**
 
-This project sets up a secure, highly-available foundation in AWS using Terraform. It provisions a custom VPC with both public and private subnets, configuring routing and an Internet Gateway for external access. An EC2 instance is deployed into the public subnet and bootstrapped automatically.
+## Overview
 
-* **Terraform** provisions all AWS infrastructure components.
-* **Bash user-data** automates the installation and configuration of an Nginx web server on boot.
-* **IAM Instance Profiles** are attached with CloudWatch policies for automated monitoring rights.
-* **Network topology** spans a VPC with isolated public (10.0.1.0/24) and private (10.0.2.0/24) subnets.
-* **Remote Backend** securely stores the generated Terraform state (`terraform.tfstate`) inside an S3 bucket for reliable management.
+The **Secure Cloud Platform** is a two-part project designed to demonstrate production-ready cloud engineering skills. It combines a robust **Terraform** infrastructure setup on AWS with `cloudctl`, a custom **Python CLI application** built to abstract and orchestrate infrastructure deployments.
 
-## Tech Stack
+I built this abstraction to solve the problem of developer friction when deploying AWS environments. Instead of expecting them to understand Terraform state files and raw HCL, they can leverage `cloudctl` to run validations, deploy and securely destroy  infrastructure, query status, and handle secure connectivity. This configuration mirrors how internal developer platforms (IDPs) are built in modern enterprise environments.
 
-* **AWS** (EC2, VPC, IAM, CloudWatch, S3)
-* **Terraform** (Infrastructure as Code, Remote State)
-* **Linux** (Amazon Linux 2023 ARM64)
-* **Bash Scripting** (Server bootstrapping)
-* **Nginx** (Web server)
+## Project Structure
 
-## Features
+This project is separated into two primary micro-components. **Please see their respective READMEs for detailed documentation and local setup instructions:**
 
-* **Infrastructure Provisioning:** Fully automated deployment of VPC, subnets, route tables, and gateways.
-* **Remote State Management:** `terraform.tfstate` is securely stored in an AWS S3 bucket to prevent local data loss and keep infrastructure variables protected.
-* **Automated Bootstrapping:** EC2 instances are pre-configured with Nginx via `user_data.sh`.
-* **IAM Least-Privilege:** EC2 instances use attached roles rather than hardcoded credentials.
-* **Network Segmentation:** Defined Public & Private subnets with highly restrictive Security Groups (e.g., SSH restricted to a specific IP, Web access enabled on port 80).
-* **Prepared for Observability:** EC2 Roles are pre-configured with the `CloudWatchAgentServerPolicy` for advanced metrics and logging.
+* **[`/terraform/README.md`](terraform/README.md):** The IaC backbone. Defines the AWS VPC, subnets, EC2 instances, security groups, and automated Bash bootstrapping scripts.
+* **[`/cloudctl/README.md`](cloudctl/README.md):** The Python CLI control plane. Manages the Terraform lifecycle, handles configuration (`settings.yaml`), and provides commands like `deploy`, `status`, and `destroy`.
 
-## Architecture Diagram
+## Key Technical Achievements 
 
-```mermaid
-flowchart TD
-    subgraph AWS [AWS Cloud]
-        subgraph VPC [VPC 10.0.0.0/16]
-            IGW[Internet Gateway]
-            
-            subgraph Public [Public Subnet 10.0.1.0/24]
-                EC2[EC2 Instance al2023-arm64]
-                Nginx[Nginx Server]
-                IAM[IAM Role CloudWatch]
-                
-                EC2 --- Nginx
-                EC2 --- IAM
-            end
-            
-            subgraph Private [Private Subnet 10.0.2.0/24]
-                Locked[Isolated resources]
-            end
-            
-            IGW <--> Public
-            Public -.-> Private
-        end
-    end
-```
+* **DevOps & CI/CD Readiness:** Built an automated Python pipeline to orchestrate Terraform. `cloudctl` is highly extensible and easily integratable into CI/CD systems like GitHub Actions or Jenkins.
+* **Security & Least Privilege:** Configured strict network segmentation and utilized IAM Instance Profiles rather than hardcoded API keys. Implemented IMDSv2 (Server-Side Request Forgery protection) on compute nodes.
+* **Idempotency & State Management:** `cloudctl deploy` relies on Terraform's idempotency, ensuring safe, repeatable runs that only change necessary resources. Infrastructure state is secured using an S3 backend.
 
-(Basic network flow overview to demonstrate component relationships)
+## Quick Start
 
-## Deployment Workflow
+1. Ensure you have **AWS credentials** configured locally, along with **Python 3.9+** and **Terraform** installed.
+2. Clone the repository and navigate to the project root.
+3. Install the CLI dependencies:
+   ```bash
+   cd cloudctl
+   python -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+4. Deploy the infrastructure using the custom tool:
+   ```bash
+   python main.py deploy
+   ```
 
-1. **Initialization:** Run `terraform init && terraform apply`.
-2. **Network Provisioning:** Primary AWS VPC, subnets, and gateways are constructed.
-3. **Security Setup:** Granular Security Groups and IAM Roles are established.
-4. **Compute Launch:** EC2 instance is launched into the public subnet.
-5. **Bootstrapping:** Data script (`user_data.sh`) executes automatically on boot.
-6. **Service Ready:** Nginx is installed, activated, and the web server comes online.
-
-## Security Considerations
-
-* **IAM Roles over Static Credentials:** Compute resources use instance profiles mapped strictly to defined policies.
-* **Restricted SSH Access:** Port 22 inbound rules are locked down to a single specific IP (`24.170.200.152`).
-* **Subnet Segmentation:** Resources that don't need internet accessibility can be stored in the pre-configured private subnet.
-* **Instance Metadata Service:** Implemented `http_tokens = "required"` (IMDSv2) to prevent SSRF vulnerabilities.
-* **State File Security:** Remote S3 bucket is utilized to stop sensitive infrastructure information, passwords, and IDs from leaking into local source code controllers.
-
-## Lessons Learned
-
-* **Automating AWS cloud infrastructure:** Using IaC to automate the creation of many AWS services, increasing traceability and reproducibility.
-* **Managing Terraform state safely:** Understanding how file and resource changes affect terraform state.
-* **Importance of deployment scripts:** Ensuring Terraform can apply updates cleanly by tracking script hashes with `terraform_data.user_data_hash`.
+---
+*Created by Richard Romero | [LinkedIn](https://www.linkedin.com/in/richardromero15/)*

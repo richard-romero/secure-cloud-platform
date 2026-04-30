@@ -1,0 +1,62 @@
+# Secure Cloud DevOps Platform (Terraform Infrastructure)
+
+**Infrastructure-as-Code AWS environment with automated deployment, networking, and security controls.**
+
+## Architecture Overview
+
+This project sets up a secure, highly-available foundation in AWS using Terraform. It provisions a custom VPC with both public and private subnets, configuring routing and an Internet Gateway for external access. An EC2 instance is deployed into the public subnet and bootstrapped automatically.
+
+* **Terraform** provisions all AWS infrastructure components.
+* **Bash user-data** automates the installation and configuration of an Nginx web server on boot.
+* **IAM Instance Profiles** are attached with CloudWatch policies for automated monitoring rights.
+* **Network topology** spans a VPC with isolated public (10.0.1.0/24) and private (10.0.2.0/24) subnets.
+* **Remote Backend** securely stores the generated Terraform state (`terraform.tfstate`) inside an S3 bucket for reliable management.
+
+## Tech Stack
+
+* **AWS** (EC2, VPC, IAM, CloudWatch, S3)
+* **Terraform** (Infrastructure as Code, Remote State)
+* **Linux** (Amazon Linux 2023 ARM64)
+* **Bash Scripting** (Server bootstrapping)
+
+## Features
+
+* **Infrastructure Provisioning:** Fully automated deployment of VPC, subnets, route tables, and gateways.
+* **Remote State Management:** `terraform.tfstate` is securely stored in an AWS S3 bucket to prevent local data loss and keep infrastructure variables protected.
+* **Automated Bootstrapping:** EC2 instances are pre-configured with Nginx via `user_data.sh`.
+* **IAM Least-Privilege:** EC2 instances use attached roles rather than hardcoded credentials.
+* **Network Segmentation:** Defined Public & Private subnets with highly restrictive Security Groups (e.g., SSH restricted to a specific IP, Web access enabled on port 80).
+* **Prepared for Observability:** EC2 Roles are pre-configured with the `CloudWatchAgentServerPolicy` for advanced metrics and logging.
+
+## Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph AWS [AWS Cloud]
+        subgraph VPC [VPC 10.0.0.0/16]
+            IGW[Internet Gateway]
+            
+            subgraph Public [Public Subnet 10.0.1.0/24]
+                EC2[EC2 Instance al2023-arm64]
+                Nginx[Nginx Server]
+                IAM[IAM Role CloudWatch]
+                
+                EC2 --- Nginx
+                EC2 --- IAM
+            end
+            
+            subgraph Private [Private Subnet 10.0.2.0/24]
+                Locked[Isolated resources]
+            end
+            
+            IGW <--> Public
+            Public -.-> Private
+        end
+    end
+```
+
+## Security Considerations
+
+* **IAM Roles over Static Credentials:** Compute resources use instance profiles mapped strictly to defined policies.
+* **Instance Metadata Service:** Implemented `http_tokens = "required"` (IMDSv2) to prevent SSRF vulnerabilities.
+* **State File Security:** Remote S3 bucket is utilized to stop sensitive infrastructure information, passwords, and IDs from leaking.
