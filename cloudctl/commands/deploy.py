@@ -34,17 +34,22 @@ def deploy_container(ssh: SSHClient) -> None:
 def deploy() -> None:
     """Provision infrastructure and deploy service."""
     try:
+        settings = load_settings()
+        ssh_allowed_cidr = settings.get("ssh", {}).get("allowed_cidr")
+
         typer.echo("[INFO] Initializing Terraform...")
         run_terraform(["terraform", "init"])
 
         typer.echo("[INFO] Applying infrastructure...")
-        run_terraform(["terraform", "apply", "-auto-approve"])
+        apply_command = ["terraform", "apply", "-auto-approve"]
+        if ssh_allowed_cidr:
+            apply_command.extend(["-var", f"ssh_allowed_cidr={ssh_allowed_cidr}"])
+        run_terraform(apply_command)
 
         if not BOOTSTRAP.exists():
             raise FileNotFoundError(f"Bootstrap script was not found at {BOOTSTRAP}")
 
         outputs = get_terraform_outputs()
-        settings = load_settings()
 
         host = outputs["public_ip"]
         key_path = settings["ssh"]["key_path"]

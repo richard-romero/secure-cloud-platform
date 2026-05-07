@@ -1,3 +1,4 @@
 ssh:
   key_path: ~/.ssh/terraform-key
   user: ec2-user
+  allowed_cidr: 174.64.100.74/32
