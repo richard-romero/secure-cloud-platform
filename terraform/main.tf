@@ -83,7 +83,7 @@ resource "aws_security_group" "web_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["24.170.200.152/32"]
+    cidr_blocks = [var.ssh_allowed_cidr]
   }
 
   # HTTP port
