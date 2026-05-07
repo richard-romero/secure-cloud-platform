@@ -6,6 +6,8 @@
 
 **An end-to-end cloud environment automation project showcasing Infrastructure as Code (IaC) principles and custom CLI tooling.**
 
+![cloudctl deployment demo](assets/demo.gif)
+
 ## Overview
 
 The **Secure Cloud Platform** is a two-part project designed to demonstrate production-ready cloud engineering skills. It combines a robust **Terraform** infrastructure setup on AWS with `cloudctl`, a custom **Python CLI application** built to abstract and orchestrate infrastructure deployments.
