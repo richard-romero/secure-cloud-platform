@@ -32,13 +32,14 @@ This project is separated into two primary micro-components. **Please see their 
 3. Install the CLI dependencies:
    ```bash
    cd cloudctl
-   python -m venv venv
-   source venv/bin/activate
+   python3 -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
-4. Deploy the infrastructure using the custom tool:
+4. Update `cloudctl/config/settings.yaml` with your SSH key path, user, and `allowed_cidr` (your public IP in `/32` form).
+5. Deploy the infrastructure using the custom tool:
    ```bash
-   python main.py deploy
+   python3 main.py deploy
    ```
 
 ---

@@ -1,4 +1,4 @@
-# ⚡ cloudctl (Custom Cloud CLI)
+# cloudctl (Custom Cloud CLI)
 
 **Python-powered CLI tool orchestrating Terraform deployments and cloud environment management.**
 
@@ -18,19 +18,19 @@
 1. **Prerequisites:** Ensure Python 3.9+ and Terraform are installed.
 2. **Virtual Environment:**
    ```bash
-   python -m venv venv
-   source venv/bin/activate
+   python3 -m venv .venv
+   source .venv/bin/activate
    ```
 3. **Install Dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 4. **Configuration:**
-   Review and update `config/settings.yaml` to specify the `key_path` (your local SSH private key) and `user` (e.g., `ec2-user`) for remote host connections.
+   Review and update `config/settings.yaml` to specify the `key_path` (your local SSH private key), `user` (e.g., `ec2-user`), and `allowed_cidr` (your public IP in `/32` form) for remote host connections. `cloudctl deploy` passes the CIDR into Terraform so you do not need to provide `-var` manually.
 
 ## Command Reference
 
-Run the main entrypoint to see available commands: `python main.py --help`
+Run the main entrypoint to see available commands: `python3 main.py --help`
 
 | Command | Description |
 |---|---|
