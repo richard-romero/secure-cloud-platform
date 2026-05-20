@@ -8,8 +8,8 @@ from ssh.client import SSHClient, get_terraform_outputs, load_settings
 app = typer.Typer()
 
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "scripts/bootstrap.sh"
-IMAGE = "nginx:latest"
-CONTAINER = "webapp"
+IMAGE = "richrom03/cloud-status-api:1.0.0"
+CONTAINER = "cloud-status-api"
 
 
 def deploy_container(ssh: SSHClient) -> None:
@@ -19,7 +19,7 @@ def deploy_container(ssh: SSHClient) -> None:
         "sudo systemctl enable --now docker",
         f"sudo docker pull {IMAGE}",
         f"sudo docker rm -f {CONTAINER} >/dev/null 2>&1 || true",
-        f"sudo docker run -d --name {CONTAINER} -p 80:80 --restart unless-stopped {IMAGE}",
+        f"sudo docker run -d --name {CONTAINER} -p 80:8000 --restart unless-stopped {IMAGE}",
     ]
 
     for command in commands:
