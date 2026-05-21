@@ -1,4 +1,4 @@
 ssh:
-  key_path: ~/.ssh/<KEY_NAME>
+  key_path: ~/.ssh/<KEY_PATH>
   user: ec2-user
   allowed_cidr: <PUBLIC_IP>/32
