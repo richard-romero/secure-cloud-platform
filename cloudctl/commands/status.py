@@ -1,8 +1,10 @@
 import typer
+
+from commands.common import CONTAINER
 from ssh.client import SSHClient, get_terraform_outputs, load_settings
 
 app = typer.Typer()
-CONTAINER = "webapp"
+CURL_FLAGS = "-sS --max-time 5"
 
 STATUS_COMMANDS = [
     (
@@ -16,7 +18,7 @@ STATUS_COMMANDS = [
     ),
     (
         "Local HTTP status",
-        "if command -v curl >/dev/null 2>&1; then curl -sS -o /dev/null -w '%{http_code}\\n' http://localhost; else echo 'curl not installed'; fi",
+        f"if command -v curl >/dev/null 2>&1; then curl {CURL_FLAGS} -o /dev/null -w '%{{http_code}}\\n' http://localhost/health; else echo 'curl not installed'; fi",
     ),
     (
         "Listening ports (22/80/443)",
@@ -24,6 +26,13 @@ STATUS_COMMANDS = [
     ),
     ("Memory usage", "free -h"),
     ("Disk usage", "df -h /"),
+    ("Health endpoint", f"curl {CURL_FLAGS} http://localhost/health"),
+    ("Version endpoint", f"curl {CURL_FLAGS} http://localhost/version"),
+    ("Metrics endpoint", f"curl {CURL_FLAGS} http://localhost/metrics"),
+    (
+        "Container image",
+        f"sudo docker inspect {CONTAINER} --format='{{{{.Config.Image}}}}'",
+    ),
 ]
 
 

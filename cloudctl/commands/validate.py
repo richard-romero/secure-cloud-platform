@@ -1,10 +1,11 @@
 import requests
 import typer
 
+from commands.common import CONTAINER
 from ssh.client import SSHClient, get_terraform_outputs, load_settings
 
 app = typer.Typer()
-CONTAINER = "webapp"
+HTTP_TIMEOUT = 5
 
 
 @app.callback(invoke_without_command=True)
@@ -25,50 +26,74 @@ def validate() -> None:
 
     typer.echo("[INFO] Checking SSH connectivity...")
 
+    image_out = ""
+
     try:
-        with SSHClient(host, key_path, user) as ssh:
+        with SSHClient(host=host, key_path=key_path, user=user) as ssh:
             typer.echo("[SUCCESS] SSH reachable")
 
             typer.echo("[INFO] Checking Docker service...")
 
-            service_state, service_error = ssh.run("sudo systemctl is-active docker")
-            service_state = service_state.strip()
+            running_out, running_err = ssh.run(
+                f"sudo docker inspect -f '{{{{.State.Running}}}}' {CONTAINER}"
+            )
 
-            if service_state != "active":
-                details = service_error.strip() or service_state or "unknown"
-                typer.echo(f"[ERROR] Docker not running (state/details: {details})")
+            if running_err.strip():
+                typer.echo(f"[ERROR] Failed to inspect container: {running_err.strip()}")
                 raise typer.Exit(code=1)
 
-            typer.echo("[SUCCESS] Docker running")
-
-            typer.echo("[INFO] Checking container status...")
-
-            container_list, container_error = ssh.run("sudo docker ps --format '{{.Names}}'")
-
-            if CONTAINER not in container_list.splitlines():
-                details = container_error.strip() or container_list.strip() or "none"
-                typer.echo(f"[ERROR] {CONTAINER} container not running (details: {details})")
+            if running_out.strip() != "true":
+                typer.echo("[ERROR] Container is not running")
                 raise typer.Exit(code=1)
 
             typer.echo("[SUCCESS] Container running")
+
+            image_out, _ = ssh.run(
+                f"sudo docker inspect {CONTAINER} --format='{{{{.Config.Image}}}}'"
+            )
     except typer.Exit:
         raise
-    except Exception as e:
-        typer.echo(f"[ERROR] SSH failed: {e}")
+    except Exception as error:
+        typer.echo(f"[ERROR] SSH failed: {error}")
         raise typer.Exit(code=1)
 
     typer.echo("[INFO] Checking HTTP response...")
 
     try:
-        response = requests.get(f"http://{host}", timeout=5)
+        response = requests.get(f"http://{host}/health", timeout=HTTP_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
 
-        if response.status_code == 200:
-            typer.echo("[SUCCESS] Service reachable")
+        if data.get("status") == "healthy":
+            typer.echo("[SUCCESS] Health endpoint healthy")
         else:
-            typer.echo(f"[ERROR] HTTP unhealthy (status: {response.status_code})")
+            typer.echo("[ERROR] Health endpoint returned unexpected response")
             raise typer.Exit(code=1)
-    except Exception as error:
+    except (requests.RequestException, ValueError) as error:
         typer.echo(f"[ERROR] Cannot reach HTTP service: {error}")
         raise typer.Exit(code=1)
+
+    typer.echo("[INFO] Checking deployed version...")
+
+    try:
+        version_response = requests.get(
+            f"http://{host}/version",
+            timeout=HTTP_TIMEOUT,
+        )
+        version_response.raise_for_status()
+        version_data = version_response.json()
+    except (requests.RequestException, ValueError) as error:
+        typer.echo(f"[ERROR] Version endpoint check failed: {error}")
+        raise typer.Exit(code=1)
+
+    deployed_version = version_data.get("version")
+
+    if deployed_version:
+        typer.echo(f"[INFO] Deployed version: {deployed_version}")
+    else:
+        typer.echo("[WARN] Version endpoint returned no version")
+
+    if image_out.strip():
+        typer.echo(f"[INFO] Running image: {image_out.strip()}")
 
     typer.echo("[SUCCESS] Validation complete.")
