@@ -3,7 +3,6 @@ from commands.common import run_terraform, wait_for_ssh_ready
 from ssh.client import SSHClient, get_terraform_outputs, load_settings
 
 app = typer.Typer()
-CONTAINER = "webapp"
 
 
 def destroy_containers(ssh: SSHClient) -> None:
@@ -25,13 +24,13 @@ def destroy_containers(ssh: SSHClient) -> None:
 
 @app.callback(invoke_without_command=True)
 def destroy() -> None:
+    """Destroy service infrastructure."""
     confirm = typer.confirm("This will destroy ALL resources. Continue?")
 
     if not confirm:
-        print("[INFO] Aborted.")
+        typer.echo("[INFO] Aborted.")
         return
-    
-    """Destroy service infrastructure."""
+
     typer.echo("[INFO] Starting destroy...")
 
     host = None

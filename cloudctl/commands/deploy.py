@@ -2,14 +2,13 @@ from pathlib import Path
 
 import typer
 
-from commands.common import run_terraform, wait_for_ssh_ready
+from commands.common import CONTAINER, run_terraform, wait_for_ssh_ready
 from ssh.client import SSHClient, get_terraform_outputs, load_settings
 
 app = typer.Typer()
 
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "scripts/bootstrap.sh"
 IMAGE = "richrom03/cloud-status-api:1.0.0"
-CONTAINER = "cloud-status-api"
 
 
 def deploy_container(ssh: SSHClient) -> None:

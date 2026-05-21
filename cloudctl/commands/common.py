@@ -5,6 +5,7 @@ from pathlib import Path
 from ssh.client import SSHClient
 
 TERRAFORM_DIR = Path(__file__).resolve().parents[2] / "terraform"
+CONTAINER = "cloud-status-api"
 
 
 def run_terraform(command: list[str]) -> None:
