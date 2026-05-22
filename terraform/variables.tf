@@ -19,7 +19,7 @@ variable "environment" {
 variable "instance_type" {
   description = "ec2 instance type"
   type        = string
-  default     = "t4g.micro"
+  default     = "t3.micro"
 }
 
 variable "key_pair_name" {
