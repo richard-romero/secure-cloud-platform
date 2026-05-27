@@ -48,7 +48,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/cloud-status-api
-          tages: |
+          tags: |
             type=raw,event=latest
             type=raw,value=1.0.0
             type=sha
