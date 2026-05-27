@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import typer
 
@@ -8,17 +9,25 @@ from ssh.client import SSHClient, get_terraform_outputs, load_settings
 app = typer.Typer()
 
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "scripts/bootstrap.sh"
-IMAGE = "ghcr.io/richard-romero/cloud-status-api:latest"
+
+def get_image() -> str:
+    """Get the image URI from settings or environment, defaulting to latest tag."""
+    settings = load_settings()
+    image = settings.get("image", {}).get("uri")
+    if image:
+        return image
+    # Fallback to environment variable or default to latest
+    return os.getenv("CONTAINER_IMAGE", "ghcr.io/richard-romero/cloud-status-api:latest")
 
 
-def deploy_container(ssh: SSHClient) -> None:
+def deploy_container(ssh: SSHClient, image: str) -> None:
     """Install Docker if needed and run the web container."""
     commands = [
         "if ! sudo systemctl list-unit-files | grep -q '^docker\\.service'; then sudo dnf install -y docker; fi",
         "sudo systemctl enable --now docker",
-        f"sudo docker pull {IMAGE}",
+        f"sudo docker pull {image}",
         f"sudo docker rm -f {CONTAINER} >/dev/null 2>&1 || true",
-        f"sudo docker run -d --name {CONTAINER} -p 80:8000 --restart unless-stopped {IMAGE}",
+        f"sudo docker run -d --name {CONTAINER} -p 80:8000 --restart unless-stopped {image}",
     ]
 
     for command in commands:
@@ -35,6 +44,7 @@ def deploy() -> None:
     try:
         settings = load_settings()
         ssh_allowed_cidr = settings.get("ssh", {}).get("allowed_cidr")
+        image = get_image()
 
         typer.echo("[INFO] Initializing Terraform...")
         run_terraform(["terraform", "init"])
@@ -73,7 +83,7 @@ def deploy() -> None:
                 typer.echo(bootstrap_err.rstrip())
 
             typer.echo("[INFO] Deploying container...")
-            deploy_container(ssh)
+            deploy_container(ssh, image)
 
         typer.echo(f"[SUCCESS] Deployment complete. Instance public IP: {host}")
     except Exception as error:
