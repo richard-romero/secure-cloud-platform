@@ -8,7 +8,7 @@ app = FastAPI()
 START_TIME = time.time()
 
 VERSION = "1.0.0"
-BUILD_TIMESTAMP = datetime.utcnow().isoformat()
+BUILD_TIMESTAMP = datetime.now(datetime.timezone.utc).isoformat()
 
 @app.get("/")
 def root():

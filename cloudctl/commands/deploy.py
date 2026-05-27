@@ -8,7 +8,7 @@ from ssh.client import SSHClient, get_terraform_outputs, load_settings
 app = typer.Typer()
 
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "scripts/bootstrap.sh"
-IMAGE = "richrom03/cloud-status-api:1.0.0"
+IMAGE = "ghcr.io/richard-romero/cloud-status-api:latest"
 
 
 def deploy_container(ssh: SSHClient) -> None:

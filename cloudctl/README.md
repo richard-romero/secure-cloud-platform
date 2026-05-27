@@ -9,7 +9,7 @@
 ## Technologies Used
 
 * **Python 3.9+**
-* **Typer:** Modern CLI framework leveraging Python type hints (builds on Click).
+* **Typer:** Modern CLI framework leveraging Python type hints.
 * **Subprocess Management:** Interfacing with Terraform binaries.
 * **Paramiko / Subprocess SSH:** Secure connection testing and remote execution.
 
