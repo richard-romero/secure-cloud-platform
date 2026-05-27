@@ -1,5 +1,5 @@
 from fastapi import FastAPI 
-from datetime import datetime
+from datetime import datetime, timezone
 import socket
 import time
 
@@ -8,7 +8,7 @@ app = FastAPI()
 START_TIME = time.time()
 
 VERSION = "1.0.0"
-BUILD_TIMESTAMP = datetime.now(datetime.timezone.utc).isoformat()
+BUILD_TIMESTAMP = datetime.now(timezone.utc).isoformat()
 
 @app.get("/")
 def root():
