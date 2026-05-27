@@ -3,25 +3,15 @@ from datetime import datetime, timezone
 import socket
 import time
 import os
-import subprocess
 
 app = FastAPI()
 
 START_TIME = time.time()
 
-# Read version from git tag, fallback to environment variable or hardcoded value
-def get_version():
-    try:
-        return subprocess.check_output(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            stderr=subprocess.DEVNULL,
-            text=True
-        ).strip().lstrip("v")
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return os.getenv("APP_VERSION", "1.0.0")
-
-VERSION = get_version()
-BUILD_TIMESTAMP = datetime.now(timezone.utc).isoformat()
+VERSION = os.getenv("APP_VERSION", "dev")
+BUILD_TIMESTAMP = os.getenv("APP_BUILD_TIMESTAMP")
+if not BUILD_TIMESTAMP:
+    BUILD_TIMESTAMP = datetime.now(timezone.utc).isoformat()
 
 @app.get("/")
 def root():

@@ -11,13 +11,22 @@ app = typer.Typer()
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "scripts/bootstrap.sh"
 
 def get_image() -> str:
-    """Get the image URI from settings or environment, defaulting to latest tag."""
+    """Get the image URI from settings or environment, defaulting to repository/tag."""
     settings = load_settings()
-    image = settings.get("image", {}).get("uri")
-    if image:
-        return image
-    # Fallback to environment variable or default to latest
-    return os.getenv("CONTAINER_IMAGE", "ghcr.io/richard-romero/cloud-status-api:latest")
+    image_settings = settings.get("image", {})
+    uri = image_settings.get("uri") or os.getenv("CONTAINER_IMAGE")
+    if uri:
+        return uri
+
+    repository = image_settings.get("repository") or os.getenv(
+        "CONTAINER_REPOSITORY",
+        "ghcr.io/richard-romero/cloud-status-api",
+    )
+    tag = image_settings.get("tag") or os.getenv("CONTAINER_TAG") or os.getenv(
+        "APP_VERSION",
+        "latest",
+    )
+    return f"{repository}:{tag}"
 
 
 def deploy_container(ssh: SSHClient, image: str) -> None:

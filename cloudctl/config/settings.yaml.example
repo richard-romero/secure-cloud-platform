@@ -2,3 +2,7 @@ ssh:
   key_path: ~/.ssh/<KEY_PATH>
   user: ec2-user
   allowed_cidr: <PUBLIC_IP>/32
+
+image:
+  repository: ghcr.io/<OWNER>/cloud-status-api
+  tag: 1.0.0
