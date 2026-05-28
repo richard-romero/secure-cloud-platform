@@ -44,5 +44,16 @@ This project is separated into two primary micro-components. **Please see their 
    python3 main.py deploy
    ```
 
+## Manual Container Release (Optional)
+
+This project uses a manual container release flow to keep things simple. Tests still run on every push to `main`, but container images are only published when you choose.
+
+1. In GitHub Actions, open the `CI Pipeline` workflow and select **Run workflow**.
+2. The release publishes two tags to GHCR:
+   - `latest`
+   - `sha-<short>` (short commit SHA for traceability)
+3. Deploy pulls `latest` by default (see the `image.tag` setting in [cloudctl/config/settings.yaml](cloudctl/config/settings.yaml)).
+4. The `/version` endpoint returns the short SHA via `APP_VERSION`.
+
 ---
 *Created by Richard Romero | [LinkedIn](https://www.linkedin.com/in/richardromero15/)*
