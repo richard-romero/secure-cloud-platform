@@ -8,22 +8,9 @@ app = typer.Typer()
 HTTP_TIMEOUT = 5
 
 
-@app.callback(invoke_without_command=True)
-def validate() -> None:
+def run_validation(host: str, key_path: str, user: str) -> None:
     """Run post-deployment validation checks against the target host."""
     typer.echo("[INFO] Starting validation...")
-
-    try:
-        outputs = get_terraform_outputs()
-        settings = load_settings()
-
-        host = outputs["public_ip"]
-        key_path = settings["ssh"]["key_path"]
-        user = settings["ssh"]["user"]
-    except Exception as error:
-        typer.echo(f"[ERROR] Failed to load Terraform outputs or settings: {error}")
-        raise typer.Exit(code=1)
-
     typer.echo("[INFO] Checking SSH connectivity...")
 
     image_out = ""
@@ -97,3 +84,20 @@ def validate() -> None:
         typer.echo(f"[INFO] Running image: {image_out.strip()}")
 
     typer.echo("[SUCCESS] Validation complete.")
+
+
+@app.callback(invoke_without_command=True)
+def validate() -> None:
+    """Run post-deployment validation checks against the target host."""
+    try:
+        outputs = get_terraform_outputs()
+        settings = load_settings()
+
+        host = outputs["public_ip"]
+        key_path = settings["ssh"]["key_path"]
+        user = settings["ssh"]["user"]
+    except Exception as error:
+        typer.echo(f"[ERROR] Failed to load Terraform outputs or settings: {error}")
+        raise typer.Exit(code=1)
+
+    run_validation(host=host, key_path=key_path, user=user)

@@ -34,7 +34,7 @@ Run the main entrypoint to see available commands: `python3 main.py --help`
 
 | Command | Description |
 |---|---|
-| `deploy` | Provisions infrastructure via Terraform and deploys the web service container. |
+| `deploy` | Provisions infrastructure via Terraform, deploys the web service container, then validates the deployment. |
 | `destroy` | Safely stops/removes remote containers and destroys all Terraform-managed infrastructure. |
 | `status` | Collects runtime metrics and service status (Docker, memory, ports) directly from the remote host. |
 | `validate` | Runs post-deployment checks against the target host (SSH connectivity, Docker state, HTTP response). |

@@ -4,6 +4,7 @@ import os
 import typer
 
 from commands.common import CONTAINER, run_terraform, wait_for_ssh_ready
+from commands.validate import run_validation
 from ssh.client import SSHClient, get_terraform_outputs, load_settings
 
 app = typer.Typer()
@@ -30,12 +31,13 @@ def get_image() -> str:
 
 
 def deploy_container(ssh: SSHClient, image: str) -> None:
-    """Install Docker if needed and run the web container."""
+    """Install Docker if needed and replace the web container."""
     commands = [
         "if ! sudo systemctl list-unit-files | grep -q '^docker\\.service'; then sudo dnf install -y docker; fi",
         "sudo systemctl enable --now docker",
         f"sudo docker pull {image}",
-        f"sudo docker rm -f {CONTAINER} >/dev/null 2>&1 || true",
+        f"sudo docker stop {CONTAINER} >/dev/null 2>&1 || true",
+        f"sudo docker rm {CONTAINER} >/dev/null 2>&1 || true",
         f"sudo docker run -d --name {CONTAINER} -p 80:8000 --restart unless-stopped {image}",
     ]
 
@@ -91,10 +93,15 @@ def deploy() -> None:
             if bootstrap_err:
                 typer.echo(bootstrap_err.rstrip())
 
-            typer.echo("[INFO] Deploying container...")
+            typer.echo("[INFO] Deploying container (pull, stop, replace)...")
             deploy_container(ssh, image)
 
+            typer.echo("[INFO] Validating deployment...")
+            run_validation(host=host, key_path=key_path, user=user)
+
         typer.echo(f"[SUCCESS] Deployment complete. Instance public IP: {host}")
+    except typer.Exit:
+        raise
     except Exception as error:
         typer.echo(f"[ERROR] Deployment failed: {error}")
         raise typer.Exit(code=1)
