@@ -1,3 +1,6 @@
+import time
+from typing import Optional
+
 import requests
 import typer
 
@@ -6,6 +9,32 @@ from ssh.client import SSHClient, get_terraform_outputs, load_settings
 
 app = typer.Typer()
 HTTP_TIMEOUT = 5
+HTTP_RETRIES = 5
+HTTP_RETRY_DELAY = 2
+
+
+def get_with_retries(url: str) -> requests.Response:
+    """Request a URL with retries for transient connectivity issues."""
+    last_error: Optional[requests.RequestException] = None
+
+    for attempt in range(1, HTTP_RETRIES + 1):
+        try:
+            response = requests.get(url, timeout=HTTP_TIMEOUT)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as error:
+            last_error = error
+            if attempt == HTTP_RETRIES:
+                break
+            typer.echo(
+                f"[INFO] HTTP check failed ({attempt}/{HTTP_RETRIES}). Retrying in {HTTP_RETRY_DELAY}s..."
+            )
+            time.sleep(HTTP_RETRY_DELAY)
+
+    if last_error is None:
+        raise typer.Exit(code=1)
+
+    raise last_error
 
 
 def run_validation(host: str, key_path: str, user: str) -> None:
@@ -47,8 +76,7 @@ def run_validation(host: str, key_path: str, user: str) -> None:
     typer.echo("[INFO] Checking HTTP response...")
 
     try:
-        response = requests.get(f"http://{host}/health", timeout=HTTP_TIMEOUT)
-        response.raise_for_status()
+        response = get_with_retries(f"http://{host}/health")
         data = response.json()
 
         if data.get("status") == "healthy":

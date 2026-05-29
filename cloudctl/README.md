@@ -26,7 +26,7 @@
    pip install -r requirements.txt
    ```
 4. **Configuration:**
-   Review and update `config/settings.yaml` to specify the `key_path` (your local SSH private key), `user` (e.g., `ec2-user`), and `allowed_cidr` (your public IP in `/32` form) for remote host connections. `cloudctl deploy` passes the CIDR into Terraform so you do not need to provide `-var` manually.
+   Review and update `config/settings.yaml` to specify the `key_path` (your local SSH private key), `user` (e.g., `ec2-user`), and `allowed_cidr` (your public IP in `/32` form) for remote host connections. `cloudctl infra apply` (and `cloudctl deploy`) passes the CIDR into Terraform so you do not need to provide `-var` manually.
 
 ## Command Reference
 
@@ -34,7 +34,9 @@ Run the main entrypoint to see available commands: `python3 main.py --help`
 
 | Command | Description |
 |---|---|
-| `deploy` | Provisions infrastructure via Terraform, deploys the web service container, then validates the deployment. |
+| `infra apply` | Provisions infrastructure via Terraform. |
+| `app deploy` | Deploys the web service container and validates the deployment. |
+| `deploy` | Convenience wrapper that runs `infra apply` and `app deploy`. |
 | `destroy` | Safely stops/removes remote containers and destroys all Terraform-managed infrastructure. |
 | `status` | Collects runtime metrics and service status (Docker, memory, ports) directly from the remote host. |
 | `validate` | Runs post-deployment checks against the target host (SSH connectivity, Docker state, HTTP response). |
