@@ -17,7 +17,7 @@ def wait_for_ssh_ready(
     host: str,
     key_path: str,
     user: str,
-    retries: int = 20,
+    retries: int = 10,
     delay: int = 10,
     logger=print,
 ) -> None:

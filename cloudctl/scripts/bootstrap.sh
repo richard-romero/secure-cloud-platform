@@ -7,6 +7,11 @@ log() {
 
 log "Ensuring Docker installed and running..."
 
+if ! command -v curl >/dev/null; then
+    log "Installing curl..."
+    sudo dnf install -y curl
+fi
+
 if ! sudo systemctl list-unit-files | grep -q '^docker\.service'; then
     log "Docker service not found. Installing Docker..."
     sudo dnf install -y docker

@@ -65,6 +65,7 @@ class SSHClient:
             hostname=self.host,
             username=self.user,
             pkey=key,
+            timeout=10,
         )
 
     def _load_private_key(self):
@@ -98,8 +99,15 @@ class SSHClient:
         exit_code = stdout.channel.recv_exit_status()
 
         if check and exit_code != 0:
+            details = []
+            if stdout_text.strip():
+                details.append(stdout_text.rstrip())
+            if stderr_text.strip():
+                details.append(stderr_text.rstrip())
+            output = "\n".join(details)
             raise RuntimeError(
-                f"Remote command failed with exit code {exit_code}: {command}\n{stderr_text}"
+                f"Remote command failed with exit code {exit_code}: {command}"
+                + (f"\n{output}" if output else "")
             )
 
         return stdout_text, stderr_text

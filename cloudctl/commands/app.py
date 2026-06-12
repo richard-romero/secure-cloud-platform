@@ -10,6 +10,7 @@ from ssh.client import SSHClient, get_terraform_outputs, load_settings
 app = typer.Typer(help="Application deployment commands.")
 
 BOOTSTRAP = Path(__file__).resolve().parents[1] / "scripts/bootstrap.sh"
+DEPLOY_SCRIPT = Path(__file__).resolve().parents[1] / "scripts/deploy_container.sh"
 
 
 def get_image() -> str:
@@ -31,25 +32,6 @@ def get_image() -> str:
     return f"{repository}:{tag}"
 
 
-def deploy_container(ssh: SSHClient, image: str) -> None:
-    """Install Docker if needed and replace the web container."""
-    commands = [
-        "if ! sudo systemctl list-unit-files | grep -q '^docker\\.service'; then sudo dnf install -y docker; fi",
-        "sudo systemctl enable --now docker",
-        f"sudo docker pull {image}",
-        f"sudo docker stop {CONTAINER} >/dev/null 2>&1 || true",
-        f"sudo docker rm {CONTAINER} >/dev/null 2>&1 || true",
-        f"sudo docker run -d --name {CONTAINER} -p 80:8000 --restart unless-stopped {image}",
-    ]
-
-    for command in commands:
-        ssh.run(command, check=True)
-
-    container_list, _ = ssh.run("sudo docker ps --format '{{.Names}}'", check=True)
-    if CONTAINER not in container_list.splitlines():
-        raise RuntimeError(f"Container '{CONTAINER}' is not running after deploy.")
-
-
 def deploy_app() -> str:
     """Deploy the application to the current infrastructure."""
     settings = load_settings()
@@ -57,24 +39,28 @@ def deploy_app() -> str:
 
     if not BOOTSTRAP.exists():
         raise FileNotFoundError(f"Bootstrap script was not found at {BOOTSTRAP}")
+    if not DEPLOY_SCRIPT.exists():
+        raise FileNotFoundError(f"Deploy script was not found at {DEPLOY_SCRIPT}")
 
     outputs = get_terraform_outputs()
 
     host = outputs["public_ip"]
     key_path = settings["ssh"]["key_path"]
     user = settings["ssh"]["user"]
-    remote_script = "/home/ec2-user/bootstrap.sh"
+    remote_bootstrap = "/home/ec2-user/bootstrap.sh"
+    remote_deploy = "/home/ec2-user/deploy_container.sh"
 
     typer.echo("[INFO] Waiting for SSH readiness...")
     wait_for_ssh_ready(host=host, key_path=key_path, user=user, logger=typer.echo)
 
     with SSHClient(host=host, key_path=key_path, user=user) as ssh:
-        typer.echo("[INFO] Uploading bootstrap script...")
-        ssh.upload(str(BOOTSTRAP), remote_script)
+        typer.echo("[INFO] Uploading scripts...")
+        ssh.upload(str(BOOTSTRAP), remote_bootstrap)
+        ssh.upload(str(DEPLOY_SCRIPT), remote_deploy)
 
         typer.echo("[INFO] Executing bootstrap...")
         bootstrap_out, bootstrap_err = ssh.run(
-            f"chmod +x {remote_script} && sudo {remote_script}",
+            f"chmod +x {remote_bootstrap} && sudo {remote_bootstrap}",
             check=True,
         )
         if bootstrap_out:
@@ -82,10 +68,17 @@ def deploy_app() -> str:
         if bootstrap_err:
             typer.echo(bootstrap_err.rstrip())
 
-        typer.echo("[INFO] Deploying container (pull, stop, replace)...")
-        deploy_container(ssh, image)
+        typer.echo("[INFO] Executing deployment script...")
+        deploy_out, deploy_err = ssh.run(
+            f"chmod +x {remote_deploy} && sudo {remote_deploy} {image} {CONTAINER}",
+            check=True,
+        )
+        if deploy_out:
+            typer.echo(deploy_out.rstrip())
+        if deploy_err:
+            typer.echo(deploy_err.rstrip())
 
-    typer.echo("[INFO] Validating deployment...")
+    typer.echo("[INFO] Validating deployment with external HTTP check...")
     run_validation(host=host, key_path=key_path, user=user)
 
     return host
