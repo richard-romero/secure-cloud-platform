@@ -1,17 +1,12 @@
 name: CI Pipeline
 
-permissions:
-  contents: read
-  packages: write
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-
 jobs:
-  test-and-build:
+  test:
     runs-on: ubuntu-latest
 
     defaults:
@@ -36,10 +31,22 @@ jobs:
           PYTHONPATH: .
         run: |
           pytest
-      
+
+  build-and-push:
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -48,7 +55,6 @@ jobs:
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         with:
           images: ghcr.io/${{ github.repository_owner }}/cloud-status-api
           tags: |
@@ -57,7 +63,6 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         with:
           context: ./app
           push: true
@@ -65,3 +70,136 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             APP_BUILD_SHA=${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Resolve EC2 target
+        id: target
+        run: |
+          set -euo pipefail
+
+          read -r INSTANCE_ID EC2_HOST <<< "$(aws ec2 describe-instances \
+            --filters \
+              "Name=tag:ManagedBy,Values=terraform" \
+              "Name=tag:Name,Values=terraform-ec2" \
+              "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].[InstanceId,PublicIpAddress]" \
+            --output text)"
+
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "No running EC2 instance found with tags ManagedBy=terraform and Name=terraform-ec2."
+            exit 1
+          fi
+
+          if [ -z "$EC2_HOST" ] || [ "$EC2_HOST" = "None" ]; then
+            echo "Instance ${INSTANCE_ID} has no public IP address."
+            exit 1
+          fi
+
+          echo "instance_id=${INSTANCE_ID}" >> "$GITHUB_OUTPUT"
+          echo "ec2_host=${EC2_HOST}" >> "$GITHUB_OUTPUT"
+          echo "Resolved deploy target: ${INSTANCE_ID} (${EC2_HOST})"
+
+      - name: Deploy via SSM
+        env:
+          INSTANCE_ID: ${{ steps.target.outputs.instance_id }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USER: ${{ github.repository_owner }}
+          DEPLOY_SCRIPT_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/cloudctl/scripts/deploy_container.sh
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cloud-status-api:sha-${SHORT_SHA}"
+
+          PARAMETERS=$(jq -n \
+            --arg url "$DEPLOY_SCRIPT_URL" \
+            --arg image "$IMAGE" \
+            --arg token "$GHCR_TOKEN" \
+            --arg user "$GHCR_USER" \
+            '{
+              commands: [
+                "set -euo pipefail",
+                ("curl -fsSL " + $url + " -o /tmp/deploy_container.sh"),
+                "chmod +x /tmp/deploy_container.sh",
+                ("echo " + $token + " | sudo docker login ghcr.io -u " + $user + " --password-stdin"),
+                ("sudo /tmp/deploy_container.sh " + $image + " cloud-status-api")
+              ]
+            }')
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy cloud-status-api from GitHub Actions" \
+            --parameters "$PARAMETERS" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM command ID: $COMMAND_ID"
+
+          for attempt in $(seq 1 30); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" \
+              --output text)
+
+            echo "Attempt ${attempt}/30: status=${STATUS}"
+
+            if [ "$STATUS" = "Success" ]; then
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$INSTANCE_ID" \
+                --query "StandardOutputContent" \
+                --output text
+              exit 0
+            fi
+
+            if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$INSTANCE_ID"
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "Timed out waiting for SSM command to complete."
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+      - name: Smoke test deployment
+        env:
+          EC2_HOST: ${{ steps.target.outputs.ec2_host }}
+          SHORT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA="${SHORT_SHA:0:7}"
+
+          echo "Checking health endpoint..."
+          curl -sf "http://${EC2_HOST}/health"
+
+          echo "Checking version endpoint..."
+          VERSION_JSON=$(curl -sf "http://${EC2_HOST}/version")
+          echo "$VERSION_JSON"
+
+          echo "$VERSION_JSON" | jq -e --arg sha "$SHORT_SHA" '.commit == $sha'
+          echo "$VERSION_JSON" | jq -e --arg tag "sha-${SHORT_SHA}" '.version == $tag'
