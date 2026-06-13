@@ -31,3 +31,15 @@ variable "ssh_allowed_cidr" {
   type        = string
   default     = "0.0.0.0/0"
 }
+
+variable "github_repository" {
+  description = "GitHub repository allowed to assume the deploy role (owner/name)"
+  type        = string
+  default     = "richard-romero/secure-cloud-platform"
+}
+
+variable "github_environment" {
+  description = "GitHub Actions environment name allowed to assume the deploy role"
+  type        = string
+  default     = "production"
+}

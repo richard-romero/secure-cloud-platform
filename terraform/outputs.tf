@@ -34,3 +34,8 @@ output "instance_id" {
 output "ssh_command" {
   value = "ssh -i ~/.ssh/${var.key_pair_name} ec2-user@${aws_instance.web.public_ip}"
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC deploy job (set as AWS_ROLE_ARN in the production environment)"
+  value       = aws_iam_role.github_actions_deploy.arn
+}
