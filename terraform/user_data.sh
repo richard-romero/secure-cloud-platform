@@ -1,10 +1,11 @@
 #!/bin/bash
 set -eux
 
-# Update system
-dnf update -y
+# Register with SSM first so the instance is manageable even if later steps fail.
+dnf install -y amazon-ssm-agent
+systemctl enable amazon-ssm-agent
+systemctl start amazon-ssm-agent
 
-# Utilities
 dnf install -y nano git docker amazon-cloudwatch-agent
 
 systemctl enable docker
