@@ -52,8 +52,9 @@ This project uses a manual container release flow to keep things simple. Tests s
 2. The release publishes two tags to GHCR:
    - `latest`
    - `sha-<short>` (short commit SHA for traceability)
-3. Deploy pulls `latest` by default (see the `image.tag` setting in [cloudctl/config/settings.yaml](cloudctl/config/settings.yaml)).
-4. The `/version` endpoint exposes deployment metadata:
+3. The workflow also deploys to EC2 via AWS SSM when the `production` environment is configured (see below).
+4. Local deploys still pull `latest` by default (see the `image.tag` setting in [cloudctl/config/settings.yaml](cloudctl/config/settings.yaml)).
+5. The `/version` endpoint exposes deployment metadata:
 
    ```json
    {
@@ -67,7 +68,57 @@ This project uses a manual container release flow to keep things simple. Tests s
    - `commit` — git commit SHA baked into the image at build time
    - `deployed_at` — UTC timestamp set when the container is started
 
-5. Rolling updates validate a staging container on port 8080 before replacing the production container on port 80.
+6. Rolling updates validate a staging container on port 8080 before replacing the production container on port 80.
+
+## GitHub Secrets & CI Deploy
+
+CI deploy uses **GitHub OIDC** (no long-lived AWS keys) and **AWS Systems Manager** to run the deploy script on EC2. SSH from GitHub-hosted runners is not required, so the EC2 security group can stay locked to your IP for local `cloudctl` access.
+
+Secret **names** appear in [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml); secret **values** are never committed.
+
+### One-time setup
+
+1. Apply Terraform so the EC2 instance receives the SSM policy, the GitHub OIDC deploy role is created, and the deploy role can discover instances:
+   ```bash
+   cd cloudctl
+   python3 main.py infra apply
+   terraform -chdir=../terraform output github_actions_role_arn
+   ```
+2. In GitHub, create an environment named **`production`** (Settings → Environments).
+3. Add these **environment secrets** to `production`:
+
+   | Secret | Description |
+   |--------|-------------|
+   | `SSH_PRIVATE_KEY` | Private key matching the EC2 key pair. Used locally via `settings.yaml`; stored in GitHub for operational hygiene (CI deploy uses SSM, not SSH). |
+   | `GHCR_TOKEN` | GitHub PAT with `read:packages` so EC2 can pull private GHCR images during deploy. |
+
+   CI resolves the deploy target automatically via `ec2:DescribeInstances` (tags `ManagedBy=terraform`, `Name=terraform-ec2`). You do **not** need to update GitHub secrets after reprovisioning an instance.
+
+4. Add this **environment variable** to `production`:
+
+   | Variable | Description |
+   |----------|-------------|
+   | `AWS_ROLE_ARN` | Value of `terraform output github_actions_role_arn`. |
+
+5. Confirm the instance is SSM-online: AWS Console → Systems Manager → Fleet Manager.
+
+### Workflow behavior
+
+| Job | Trigger | Purpose |
+|-----|---------|---------|
+| `test` | Every push to `main` and manual runs | Run pytest |
+| `build-and-push` | Manual `workflow_dispatch` only | Build and push image to GHCR (`GITHUB_TOKEN`) |
+| `deploy` | Manual `workflow_dispatch` only | Deploy via SSM, then HTTP smoke-test `/health` and `/version` |
+
+### Design notes
+
+- **OIDC over static AWS keys** — GitHub Actions assumes a short-lived IAM role via `id-token: write`.
+- **Dynamic instance discovery** — Deploy finds the running EC2 instance by Terraform tags, so reprovisioning does not require updating GitHub secrets.
+- **SSM over SSH from CI** — Deploy commands run through SSM; port 22 stays restricted to your `allowed_cidr`.
+- **Scoped GHCR PAT** — CI push uses the built-in `GITHUB_TOKEN`; EC2 pull uses a read-scoped `GHCR_TOKEN`.
+- **Environment gating** — Deploy runs in the `production` environment so secrets are scoped and approval rules can be added later.
+
+If your AWS account already has a GitHub OIDC provider, import it into Terraform or adjust [terraform/github_actions.tf](terraform/github_actions.tf) before applying.
 
 ---
 *Created by Richard Romero | [LinkedIn](https://www.linkedin.com/in/richardromero15/)*

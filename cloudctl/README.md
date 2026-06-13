@@ -28,6 +28,8 @@
 4. **Configuration:**
    Review and update `config/settings.yaml` to specify the `key_path` (your local SSH private key), `user` (e.g., `ec2-user`), and `allowed_cidr` (your public IP in `/32` form) for remote host connections. `cloudctl infra apply` (and `cloudctl deploy`) passes the CIDR into Terraform so you do not need to provide `-var` manually.
 
+   For CI/CD secrets and the GitHub Actions deploy path, see [GitHub Secrets & CI Deploy](../README.md#github-secrets--ci-deploy) in the project README.
+
 ## Command Reference
 
 Run the main entrypoint to see available commands: `python3 main.py --help`
