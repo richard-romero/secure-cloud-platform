@@ -53,7 +53,21 @@ This project uses a manual container release flow to keep things simple. Tests s
    - `latest`
    - `sha-<short>` (short commit SHA for traceability)
 3. Deploy pulls `latest` by default (see the `image.tag` setting in [cloudctl/config/settings.yaml](cloudctl/config/settings.yaml)).
-4. The `/version` endpoint returns the short SHA via `APP_VERSION`.
+4. The `/version` endpoint exposes deployment metadata:
+
+   ```json
+   {
+     "version": "sha-a13f92",
+     "commit": "a13f92",
+     "deployed_at": "2026-05-18T14:00:00Z"
+   }
+   ```
+
+   - `version` — image tag from the deployed container
+   - `commit` — git commit SHA baked into the image at build time
+   - `deployed_at` — UTC timestamp set when the container is started
+
+5. Rolling updates validate a staging container on port 8080 before replacing the production container on port 80.
 
 ---
 *Created by Richard Romero | [LinkedIn](https://www.linkedin.com/in/richardromero15/)*

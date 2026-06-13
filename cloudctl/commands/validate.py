@@ -37,7 +37,12 @@ def get_with_retries(url: str) -> requests.Response:
     raise last_error
 
 
-def run_validation(host: str, key_path: str, user: str) -> None:
+def run_validation(
+    host: str,
+    key_path: str,
+    user: str,
+    expected_image_tag: Optional[str] = None,
+) -> None:
     """Run post-deployment validation checks against the target host."""
     typer.echo("[INFO] Starting validation...")
     typer.echo("[INFO] Checking SSH connectivity...")
@@ -102,11 +107,35 @@ def run_validation(host: str, key_path: str, user: str) -> None:
         raise typer.Exit(code=1)
 
     deployed_version = version_data.get("version")
+    deployed_commit = version_data.get("commit")
+    deployed_at = version_data.get("deployed_at")
 
-    if deployed_version:
-        typer.echo(f"[INFO] Deployed version: {deployed_version}")
-    else:
-        typer.echo("[WARN] Version endpoint returned no version")
+    missing_fields = [
+        field
+        for field, value in (
+            ("version", deployed_version),
+            ("commit", deployed_commit),
+            ("deployed_at", deployed_at),
+        )
+        if not value
+    ]
+
+    if missing_fields:
+        typer.echo(
+            f"[ERROR] Version endpoint missing required fields: {', '.join(missing_fields)}"
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"[INFO] Deployed version: {deployed_version}")
+    typer.echo(f"[INFO] Deployed commit: {deployed_commit}")
+    typer.echo(f"[INFO] Deployed at: {deployed_at}")
+
+    if expected_image_tag and deployed_version != expected_image_tag:
+        typer.echo(
+            "[ERROR] Deployed version does not match expected image tag "
+            f"(expected {expected_image_tag}, got {deployed_version})"
+        )
+        raise typer.Exit(code=1)
 
     if image_out.strip():
         typer.echo(f"[INFO] Running image: {image_out.strip()}")

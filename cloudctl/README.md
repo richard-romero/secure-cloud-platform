@@ -35,11 +35,36 @@ Run the main entrypoint to see available commands: `python3 main.py --help`
 | Command | Description |
 |---|---|
 | `infra apply` | Provisions infrastructure via Terraform. |
-| `app deploy` | Deploys the web service container and validates the deployment. |
+| `app deploy` | Deploys the web service container using a rolling update and validates the deployment. |
 | `deploy` | Convenience wrapper that runs `infra apply` and `app deploy`. |
 | `destroy` | Safely stops/removes remote containers and destroys all Terraform-managed infrastructure. |
 | `status` | Collects runtime metrics and service status (Docker, memory, ports) directly from the remote host. |
-| `validate` | Runs post-deployment checks against the target host (SSH connectivity, Docker state, HTTP response). |
+| `validate` | Runs post-deployment checks against the target host (SSH connectivity, Docker state, HTTP response, version metadata). |
+
+## Deployment Metadata
+
+The application exposes `GET /version` with:
+
+```json
+{
+  "version": "sha-a13f92",
+  "commit": "a13f92",
+  "deployed_at": "2026-05-18T14:00:00Z"
+}
+```
+
+`version` reflects the deployed image tag. `commit` is the git SHA baked into the image at CI build time. `deployed_at` is set when `deploy_container.sh` starts the container.
+
+## Rolling Updates
+
+`deploy_container.sh` performs a same-host blue-green deploy:
+
+1. Start a staging container on port 8080
+2. Health-check the staging container
+3. Stop and remove the old production container on port 80
+4. Start the new production container on port 80
+
+If the staging health check fails, the staging container is removed and the existing production container is left running.
 
 ## Extending the CLI
 

@@ -32,6 +32,10 @@ def get_image() -> str:
     return f"{repository}:{tag}"
 
 
+def _image_tag(image: str) -> str:
+    return image.rsplit(":", 1)[-1]
+
+
 def deploy_app() -> str:
     """Deploy the application to the current infrastructure."""
     settings = load_settings()
@@ -79,7 +83,12 @@ def deploy_app() -> str:
             typer.echo(deploy_err.rstrip())
 
     typer.echo("[INFO] Validating deployment with external HTTP check...")
-    run_validation(host=host, key_path=key_path, user=user)
+    run_validation(
+        host=host,
+        key_path=key_path,
+        user=user,
+        expected_image_tag=_image_tag(image),
+    )
 
     return host
 
