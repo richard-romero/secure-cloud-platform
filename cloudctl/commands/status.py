@@ -1,3 +1,6 @@
+import json
+from typing import Optional
+
 import typer
 
 from commands.common import CONTAINER
@@ -17,23 +20,85 @@ STATUS_COMMANDS = [
         "sudo docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.Ports}}'",
     ),
     (
-        "Local HTTP status",
-        f"if command -v curl >/dev/null 2>&1; then curl {CURL_FLAGS} -o /dev/null -w '%{{http_code}}\\n' http://localhost/health; else echo 'curl not installed'; fi",
-    ),
-    (
         "Listening ports (22/80/443)",
         "sudo ss -tuln | grep -E ':(22|80|443)[[:space:]]' || true",
     ),
     ("Memory usage", "free -h"),
     ("Disk usage", "df -h /"),
-    ("Health endpoint", f"curl {CURL_FLAGS} http://localhost/health"),
-    ("Version endpoint", f"curl {CURL_FLAGS} http://localhost/version"),
     ("Metrics endpoint", f"curl {CURL_FLAGS} http://localhost/metrics"),
-    (
-        "Container image",
-        f"sudo docker inspect {CONTAINER} --format='{{{{.Config.Image}}}}'",
-    ),
 ]
+
+
+def _parse_json_output(out: str) -> Optional[dict]:
+    """Parse JSON from remote command output, returning None on failure."""
+    text = out.strip()
+    if not text:
+        return None
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+    return data if isinstance(data, dict) else None
+
+
+def _image_tag(image_ref: str) -> str:
+    if ":" in image_ref:
+        return image_ref.rsplit(":", 1)[-1]
+    return image_ref
+
+
+def show_deployment_summary(ssh: SSHClient) -> None:
+    """Display deployment metadata and container health (informational only)."""
+    typer.echo("\n[STATUS] Deployment summary")
+
+    running_out, _ = ssh.run(
+        f"sudo docker inspect -f '{{{{.State.Running}}}}' {CONTAINER} 2>/dev/null || true"
+    )
+    status_out, _ = ssh.run(
+        f"sudo docker inspect -f '{{{{.State.Status}}}}' {CONTAINER} 2>/dev/null || true"
+    )
+    image_out, _ = ssh.run(
+        f"sudo docker inspect {CONTAINER} --format='{{{{.Config.Image}}}}' 2>/dev/null || true"
+    )
+
+    is_running = running_out.strip() == "true"
+    docker_status = status_out.strip() or "unavailable"
+
+    health_out, _ = ssh.run(
+        f"curl {CURL_FLAGS} http://localhost/health 2>/dev/null || true"
+    )
+    version_out, _ = ssh.run(
+        f"curl {CURL_FLAGS} http://localhost/version 2>/dev/null || true"
+    )
+
+    health_data = _parse_json_output(health_out)
+    version_data = _parse_json_output(version_out)
+
+    app_health = health_data.get("status") if health_data else None
+    if is_running and app_health == "healthy":
+        container_health = f"{docker_status} / healthy"
+    elif is_running:
+        container_health = f"{docker_status} / {app_health or 'unhealthy'}"
+    else:
+        container_health = "not running"
+
+    image_ref = image_out.strip()
+    deployed_tag = _image_tag(image_ref) if image_ref else None
+    running_version = version_data.get("version") if version_data else None
+    deployed_at = version_data.get("deployed_at") if version_data else None
+    commit = version_data.get("commit") if version_data else None
+
+    if not deployed_tag and running_version:
+        deployed_tag = running_version
+
+    typer.echo(f"  Deployed image tag: {deployed_tag or 'unavailable'}")
+    typer.echo(f"  Container health:   {container_health}")
+    typer.echo(f"  Deployment time:    {deployed_at or 'unavailable'}")
+    typer.echo(f"  Running version:    {running_version or 'unavailable'}")
+    if commit:
+        typer.echo(f"  Commit:               {commit}")
 
 
 def show_command_output(ssh: SSHClient, title: str, command: str) -> None:
@@ -50,7 +115,7 @@ def show_command_output(ssh: SSHClient, title: str, command: str) -> None:
 
 @app.callback(invoke_without_command=True)
 def status() -> None:
-    """Collect runtime and service status details from the target host."""
+    """Collect operational status and host diagnostics from the target host."""
     typer.echo("[INFO] Retrieving infrastructure info...")
 
     try:
@@ -70,6 +135,8 @@ def status() -> None:
     try:
         with SSHClient(host=host, key_path=key_path, user=user) as ssh:
             typer.echo("[SUCCESS] SSH connected")
+
+            show_deployment_summary(ssh)
 
             for title, command in STATUS_COMMANDS:
                 show_command_output(ssh, title=title, command=command)
@@ -97,4 +164,5 @@ def status() -> None:
     typer.echo(f"- {ssh_command} \"sudo docker inspect {CONTAINER}\"")
     typer.echo(f"- {ssh_command} \"sudo ss -tulpen\"")
 
+    typer.echo("\n[INFO] Run 'cloudctl validate' for a pass/fail smoke test.")
     typer.echo("\n[SUCCESS] Status collection complete.")
