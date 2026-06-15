@@ -40,8 +40,26 @@ Run the main entrypoint to see available commands: `python3 main.py --help`
 | `app deploy` | Deploys the web service container using a rolling update and validates the deployment. |
 | `deploy` | Convenience wrapper that runs `infra apply` and `app deploy`. |
 | `destroy` | Safely stops/removes remote containers and destroys all Terraform-managed infrastructure. |
-| `status` | Collects runtime metrics and service status (Docker, memory, ports) directly from the remote host. |
-| `validate` | Runs post-deployment checks against the target host (SSH connectivity, Docker state, HTTP response, version metadata). |
+| `status` | Operational visibility: deployment summary, host metrics, Docker state, ports, logs. |
+| `validate` | Pass/fail smoke test: SSH, container running, `/health`, `/version` metadata. |
+
+## Validate vs Status
+
+These commands answer different questions and are intentionally separated:
+
+| Concern | `validate` | `status` |
+|---|---|---|
+| Purpose | Is the deployment healthy? | What is the system doing right now? |
+| Exit code on app failure | Yes | No (informational) |
+| HTTP checks | External (public IP) | Internal (SSH to localhost) |
+| Expected image tag match | Yes (during deploy) | No |
+| Deployment summary | No | Yes |
+| Host metrics / logs / ports | No | Yes |
+
+- Run **`cloudctl validate`** after deploy or when you need a quick pass/fail check.
+- Run **`cloudctl status`** when investigating issues or reviewing operational detail.
+
+The deployment summary in `status` displays Phase 12 fields: deployed image tag, container health, deployment timestamp, and running version (sourced from Docker inspect and the `/version` endpoint).
 
 ## Deployment Metadata
 
