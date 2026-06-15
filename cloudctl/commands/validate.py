@@ -43,11 +43,12 @@ def run_validation(
     user: str,
     expected_image_tag: Optional[str] = None,
 ) -> None:
-    """Run post-deployment validation checks against the target host."""
+    """Run pass/fail smoke tests against the target host.
+
+    Use ``status`` for detailed operational diagnostics.
+    """
     typer.echo("[INFO] Starting validation...")
     typer.echo("[INFO] Checking SSH connectivity...")
-
-    image_out = ""
 
     try:
         with SSHClient(host=host, key_path=key_path, user=user) as ssh:
@@ -68,10 +69,6 @@ def run_validation(
                 raise typer.Exit(code=1)
 
             typer.echo("[SUCCESS] Container running")
-
-            image_out, _ = ssh.run(
-                f"sudo docker inspect {CONTAINER} --format='{{{{.Config.Image}}}}'"
-            )
     except typer.Exit:
         raise
     except Exception as error:
@@ -126,9 +123,7 @@ def run_validation(
         )
         raise typer.Exit(code=1)
 
-    typer.echo(f"[INFO] Deployed version: {deployed_version}")
-    typer.echo(f"[INFO] Deployed commit: {deployed_commit}")
-    typer.echo(f"[INFO] Deployed at: {deployed_at}")
+    typer.echo(f"[SUCCESS] Version metadata valid ({deployed_version})")
 
     if expected_image_tag and deployed_version != expected_image_tag:
         typer.echo(
@@ -137,15 +132,19 @@ def run_validation(
         )
         raise typer.Exit(code=1)
 
-    if image_out.strip():
-        typer.echo(f"[INFO] Running image: {image_out.strip()}")
+    if expected_image_tag:
+        typer.echo(f"[SUCCESS] Deployed image tag matches expected ({expected_image_tag})")
 
-    typer.echo("[SUCCESS] Validation complete.")
+    typer.echo("\n[INFO] Run 'cloudctl status' for detailed operational diagnostics.")
+    typer.echo("\n[SUCCESS] Validation complete.")
 
 
 @app.callback(invoke_without_command=True)
 def validate() -> None:
-    """Run post-deployment validation checks against the target host."""
+    """Run pass/fail smoke tests against the target host.
+
+    Use ``status`` for detailed operational diagnostics.
+    """
     try:
         outputs = get_terraform_outputs()
         settings = load_settings()
