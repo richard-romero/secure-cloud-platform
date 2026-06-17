@@ -1,17 +1,17 @@
 # cloudctl (Custom Cloud CLI)
 
-**Python-powered CLI tool orchestrating Terraform deployments and cloud environment management.**
+**Python-powered CLI orchestrating Terraform deployments and containerized app delivery on AWS.**
 
 ## Overview
 
-`cloudctl` is a custom command-line interface built in Python that abstracts complex infrastructure operations into simple, repeatable commands. It acts as the control plane for the Secure Cloud Platform, managing everything from bootstrapping infrastructure to validation and connection testing.
+`cloudctl` is a custom command-line interface built in Python that abstracts infrastructure and application operations into simple, repeatable commands. It acts as the control plane for the [Secure Cloud Platform](../README.md), orchestrating **both Terraform provisioning and the `cloud-status-api` container** on EC2.
 
 ## Technologies Used
 
 * **Python 3.9+**
 * **Typer:** Modern CLI framework leveraging Python type hints.
-* **Subprocess Management:** Interfacing with Terraform binaries.
-* **Paramiko / Subprocess SSH:** Secure connection testing and remote execution.
+* **Subprocess management:** Interfacing with Terraform binaries.
+* **Paramiko / subprocess SSH:** Secure connection testing and remote execution.
 
 ## Installation & Setup
 
@@ -43,6 +43,16 @@ Run the main entrypoint to see available commands: `python3 main.py --help`
 | `status` | Operational visibility: deployment summary, host metrics, Docker state, ports, logs. |
 | `validate` | Pass/fail smoke test: SSH, container running, `/health`, `/version` metadata. |
 
+## Deploy Paths
+
+| Command | What it does |
+|---------|--------------|
+| `infra apply` | Terraform only — VPC, EC2, IAM, SSM, GitHub OIDC ([`terraform/`](../terraform/)) |
+| `app deploy` | Pull GHCR image and rolling update via [`deploy_container.sh`](scripts/deploy_container.sh) |
+| `deploy` | Both — full local stack (infra + app) |
+
+For CI-based deploys (GitHub Actions → GHCR → SSM), see [Deploy Paths](../README.md#deploy-paths) in the project README.
+
 ## Validate vs Status
 
 These commands answer different questions and are intentionally separated:
@@ -59,25 +69,15 @@ These commands answer different questions and are intentionally separated:
 - Run **`cloudctl validate`** after deploy or when you need a quick pass/fail check.
 - Run **`cloudctl status`** when investigating issues or reviewing operational detail.
 
-The deployment summary in `status` displays Phase 12 fields: deployed image tag, container health, deployment timestamp, and running version (sourced from Docker inspect and the `/version` endpoint).
+The deployment summary in `status` shows the deployed image tag, container health, deployment timestamp, and running version (sourced from Docker inspect and the [`/version` endpoint](../app/README.md)).
 
 ## Deployment Metadata
 
-The application exposes `GET /version` with:
-
-```json
-{
-  "version": "sha-a13f92",
-  "commit": "a13f92",
-  "deployed_at": "2026-05-18T14:00:00Z"
-}
-```
-
-`version` reflects the deployed image tag. `commit` is the git SHA baked into the image at CI build time. `deployed_at` is set when `deploy_container.sh` starts the container.
+The application exposes deployment metadata at `GET /version`. See [`app/README.md`](../app/README.md) for the response schema and environment variables.
 
 ## Rolling Updates
 
-`deploy_container.sh` performs a same-host blue-green deploy:
+[`deploy_container.sh`](scripts/deploy_container.sh) performs a same-host blue-green deploy:
 
 1. Start a staging container on port 8080
 2. Health-check the staging container
@@ -85,6 +85,14 @@ The application exposes `GET /version` with:
 4. Start the new production container on port 80
 
 If the staging health check fails, the staging container is removed and the existing production container is left running.
+
+The container listens on port **8000** internally; the host maps **80** (production) and **8080** (staging).
+
+## Related Docs
+
+* **Application API and local dev** — [`app/README.md`](../app/README.md)
+* **Infrastructure (VPC, EC2, OIDC, SSM)** — [`terraform/README.md`](../terraform/README.md)
+* **CI/CD setup and workflow** — [`README.md`](../README.md#github-secrets--ci-deploy)
 
 ## Extending the CLI
 

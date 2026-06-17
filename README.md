@@ -4,31 +4,84 @@
 [![Terraform](https://img.shields.io/badge/Terraform-IaC-623CE4.svg)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/AWS-Cloud-FF9900.svg)](https://aws.amazon.com/)
 
-**An end-to-end cloud environment automation project showcasing Infrastructure as Code (IaC) principles and custom CLI tooling.**
+**An end-to-end cloud platform showcasing Infrastructure as Code, container delivery, and custom CLI tooling.**
 
 ![cloudctl deployment demo](assets/demo.gif)
 
 ## Overview
 
-The **Secure Cloud Platform** is a two-part project designed to demonstrate production-ready cloud engineering skills. It combines a robust **Terraform** infrastructure setup on AWS with `cloudctl`, a custom **Python CLI application** built to abstract and orchestrate infrastructure deployments.
+The **Secure Cloud Platform** is a three-layer project designed to demonstrate production-ready cloud engineering skills:
 
-I built this abstraction to solve the problem of developer friction when deploying AWS environments. Instead of expecting them to understand Terraform state files and raw HCL, they can leverage `cloudctl` to run validations, deploy and securely destroy  infrastructure, query status, and handle secure connectivity. This configuration mirrors how internal developer platforms (IDPs) are built in modern enterprise environments.
+1. **Terraform** — AWS infrastructure (VPC, EC2, IAM, SSM, GitHub OIDC)
+2. **`cloudctl`** — Python CLI that orchestrates Terraform and container deploys
+3. **`cloud-status-api`** — containerized FastAPI app running on EC2 via Docker
 
-## Project Structure
+Two deploy paths get code to production:
 
-This project is separated into two primary micro-components. **Please see their respective READMEs for detailed documentation and local setup instructions:**
+- **Local** — `cloudctl deploy` provisions infra and pulls the container over SSH (ideal for first-time setup and debugging).
+- **CI** — GitHub Actions builds the image, pushes to GHCR, and deploys via AWS SSM (no SSH from runners).
 
-* **[`/terraform/README.md`](terraform/README.md):** The IaC backbone. Defines the AWS VPC, subnets, EC2 instances, security groups, and automated Bash bootstrapping scripts.
-* **[`/cloudctl/README.md`](cloudctl/README.md):** The Python CLI control plane. Manages the Terraform lifecycle, handles configuration (`settings.yaml`), and provides commands like `deploy`, `status`, and `destroy`.
+I built `cloudctl` to reduce developer friction when deploying AWS environments. Instead of expecting teams to manage Terraform state and raw HCL, they can run validations, deploy, query status, and destroy infrastructure through a single CLI — similar to how internal developer platforms (IDPs) work in enterprise environments.
 
-## Key Technical Achievements 
+## Architecture
 
-* **DevOps & CI/CD Readiness:** Built an automated Python pipeline to orchestrate Terraform. `cloudctl` is highly extensible and easily integratable into CI/CD systems like GitHub Actions or Jenkins.
-* **Security & Least Privilege:** Configured strict network segmentation and utilized IAM Instance Profiles rather than hardcoded API keys. Implemented IMDSv2 (Server-Side Request Forgery protection) on compute nodes.
-* **Idempotency & State Management:** `cloudctl deploy` relies on Terraform's idempotency, ensuring safe, repeatable runs that only change necessary resources. Infrastructure state is secured using an S3 backend.
+```mermaid
+flowchart LR
+    subgraph entry [Entry Points]
+        Dev[Developer]
+        GHA[GitHub Actions]
+    end
+
+    subgraph control [Control Plane]
+        Cloudctl[cloudctl CLI]
+    end
+
+    subgraph registry [Registry]
+        GHCR[GHCR cloud-status-api]
+    end
+
+    subgraph aws [AWS]
+        EC2[EC2 Docker Host]
+        SSM[SSM Agent]
+        App[cloud-status-api :80]
+    end
+
+    Dev -->|cloudctl deploy| Cloudctl
+    Cloudctl -->|Terraform| EC2
+    Cloudctl -->|SSH + deploy script| EC2
+    GHA -->|pytest on push| GHA
+    GHA -->|build and push| GHCR
+    GHA -->|OIDC + SSM| SSM
+    SSM --> EC2
+    GHCR -->|docker pull| EC2
+    EC2 --> App
+```
+
+## Skills Demonstrated
+
+* **Infrastructure as Code:** Terraform, remote S3 state, IAM least privilege, IMDSv2
+* **CI/CD:** GitHub Actions, GHCR, GitHub OIDC (no long-lived AWS keys), SSM Run Command
+* **Application delivery:** Docker, blue-green rolling deploy, post-deploy smoke tests
+* **Platform tooling:** Custom Python CLI (Typer), operational commands (`status`, `validate`)
+
+## Documentation Map
+
+| README | What you'll learn |
+|--------|-------------------|
+| [`terraform/README.md`](terraform/README.md) | VPC, EC2, IAM, SSM, GitHub OIDC roles |
+| [`cloudctl/README.md`](cloudctl/README.md) | CLI commands, local deploy/destroy, validation |
+| [`app/README.md`](app/README.md) | FastAPI service, API endpoints, local dev and tests (Python 3.12) |
+
+## Key Technical Achievements
+
+* **CI/CD pipeline:** pytest on every push to `main`; manual release gate for image publish; OIDC-authenticated deploy via SSM; post-deploy assertions on `/health` and `/version` ([`.github/workflows/ci.yaml`](.github/workflows/ci.yaml)).
+* **Security and least privilege:** Network segmentation, IAM instance profiles (no hardcoded API keys), IMDSv2 on compute, SSH restricted to your IP while CI uses SSM.
+* **Idempotency and state management:** `cloudctl deploy` relies on Terraform idempotency; infrastructure state secured in an S3 backend.
+* **Zero-downtime deploys:** Rolling updates validate a staging container on port 8080 before replacing production on port 80 ([`cloudctl/README.md`](cloudctl/README.md#rolling-updates)).
 
 ## Quick Start
 
+0. Skim the [architecture diagram](#architecture) above to see how the layers connect.
 1. Ensure you have **AWS credentials** configured locally, along with **Python 3.9+** and **Terraform** installed.
 2. Clone the repository and navigate to the project root.
 3. Install the CLI dependencies:
@@ -39,10 +92,22 @@ This project is separated into two primary micro-components. **Please see their 
    pip install -r requirements.txt
    ```
 4. Update `cloudctl/config/settings.yaml` with your SSH key path, user, and `allowed_cidr` (your public IP in `/32` form).
-5. Deploy the infrastructure using the custom tool:
+5. Deploy the full stack:
    ```bash
    python3 main.py deploy
    ```
+6. Verify the deployment:
+   ```bash
+   curl http://<ec2-public-ip>/health
+   ```
+   See [`app/README.md`](app/README.md) for all API endpoints.
+
+## Deploy Paths
+
+| Path | When | Entry |
+|------|------|-------|
+| Local | First-time infra, debugging SSH | `python3 main.py deploy` (from `cloudctl/`) |
+| CI | Promoting a tested image to production | GitHub Actions → **Run workflow** on `CI Pipeline` |
 
 ## Manual Container Release (Optional)
 
@@ -54,21 +119,8 @@ This project uses a manual container release flow to keep things simple. Tests s
    - `sha-<short>` (short commit SHA for traceability)
 3. The workflow also deploys to EC2 via AWS SSM when the `production` environment is configured (see below).
 4. Local deploys still pull `latest` by default (see the `image.tag` setting in [cloudctl/config/settings.yaml](cloudctl/config/settings.yaml)).
-5. The `/version` endpoint exposes deployment metadata:
-
-   ```json
-   {
-     "version": "sha-a13f92",
-     "commit": "a13f92",
-     "deployed_at": "2026-05-18T14:00:00Z"
-   }
-   ```
-
-   - `version` — image tag from the deployed container
-   - `commit` — git commit SHA baked into the image at build time
-   - `deployed_at` — UTC timestamp set when the container is started
-
-6. Rolling updates validate a staging container on port 8080 before replacing the production container on port 80.
+5. The `/version` endpoint exposes deployment metadata — see [`app/README.md`](app/README.md) for the response schema and environment variables.
+6. Rolling updates validate a staging container on port 8080 before replacing the production container on port 80 — details in [`cloudctl/README.md`](cloudctl/README.md#rolling-updates).
 
 ## GitHub Secrets & CI Deploy
 

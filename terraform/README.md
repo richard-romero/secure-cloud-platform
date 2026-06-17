@@ -4,29 +4,58 @@
 
 ## Architecture Overview
 
-This project sets up a secure, highly-available foundation in AWS using Terraform. It provisions a custom VPC with both public and private subnets, configuring routing and an Internet Gateway for external access. An EC2 instance is deployed into the public subnet and bootstrapped automatically.
+This project sets up a secure foundation in AWS using Terraform. It provisions a custom VPC with public and private subnets, an Internet Gateway, and an EC2 instance in the public subnet that serves as a Docker host for the [`cloud-status-api`](../app/README.md) container.
 
 * **Terraform** provisions all AWS infrastructure components.
-* **Bash user-data** automates the installation and configuration of an Nginx web server on boot.
-* **IAM Instance Profiles** are attached with CloudWatch policies for automated monitoring rights.
+* **Bash user-data** bootstraps the EC2 host with Docker, the SSM agent, and the CloudWatch agent.
+* **IAM instance profiles** grant the EC2 host CloudWatch and SSM permissions without static credentials.
+* **GitHub OIDC** (`github_actions.tf`) lets GitHub Actions assume a short-lived IAM role for SSM-based deploys.
 * **Network topology** spans a VPC with isolated public (10.0.1.0/24) and private (10.0.2.0/24) subnets.
-* **Remote Backend** securely stores the generated Terraform state (`terraform.tfstate`) inside an S3 bucket for reliable management.
+* **Remote backend** stores Terraform state in S3 for reliable, shared management.
 
 ## Tech Stack
 
-* **AWS** (EC2, VPC, IAM, CloudWatch, S3)
-* **Terraform** (Infrastructure as Code, Remote State)
-* **Linux** (Amazon Linux 2023 ARM64)
-* **Bash Scripting** (Server bootstrapping)
+* **AWS** (EC2, VPC, IAM, SSM, CloudWatch, S3)
+* **Terraform** (Infrastructure as Code, remote state)
+* **Linux** (Amazon Linux 2023 x86_64)
+* **Bash** (server bootstrapping via `user_data.sh`)
 
 ## Features
 
-* **Infrastructure Provisioning:** Fully automated deployment of VPC, subnets, route tables, and gateways.
-* **Remote State Management:** `terraform.tfstate` is securely stored in an AWS S3 bucket to prevent local data loss and keep infrastructure variables protected.
-* **Automated Bootstrapping:** EC2 instances are pre-configured with Nginx via `user_data.sh`.
-* **IAM Least-Privilege:** EC2 instances use attached roles rather than hardcoded credentials.
-* **Network Segmentation:** Defined Public & Private subnets with highly restrictive Security Groups (e.g., SSH restricted to a specific IP, Web access enabled on port 80).
-* **Prepared for Observability:** EC2 Roles are pre-configured with the `CloudWatchAgentServerPolicy` for advanced metrics and logging.
+* **Infrastructure provisioning:** Automated deployment of VPC, subnets, route tables, and gateways.
+* **Remote state management:** `terraform.tfstate` stored in S3 to prevent local data loss.
+* **Compute bootstrap:** EC2 hosts pre-configured with Docker and SSM via [`user_data.sh`](user_data.sh).
+* **IAM least privilege:** EC2 uses instance profiles; GitHub Actions uses a scoped OIDC deploy role.
+* **Network segmentation:** Public and private subnets with restrictive security groups (SSH limited to your IP, HTTP on port 80).
+* **Observability readiness:** EC2 role includes `CloudWatchAgentServerPolicy`.
+
+## Compute Bootstrap (`user_data.sh`)
+
+On first boot, the EC2 instance runs [`user_data.sh`](user_data.sh):
+
+1. **SSM agent** — registers the instance with AWS Systems Manager so CI can deploy without opening SSH to GitHub runners.
+2. **Docker** — container runtime for `cloud-status-api`.
+3. **CloudWatch agent** — metrics and logging readiness.
+
+No application code runs in user-data; the app is deployed separately via `cloudctl` or GitHub Actions.
+
+## GitHub Actions Integration
+
+[`github_actions.tf`](github_actions.tf) provisions CI/CD infrastructure:
+
+* **OIDC provider** — federated trust for `token.actions.githubusercontent.com`.
+* **Deploy role** — assumable only from the configured GitHub repo and `production` environment.
+* **Role permissions** — `ssm:SendCommand` (scoped to instances tagged `ManagedBy=terraform`), `ssm:GetCommandInvocation`, and `ec2:DescribeInstances`.
+
+The EC2 instance profile includes `AmazonSSMManagedInstanceCore` (see [`main.tf`](main.tf)) so SSM commands can reach the host.
+
+After `terraform apply`, use the output for GitHub setup:
+
+```bash
+terraform output github_actions_role_arn
+```
+
+Set that value as `AWS_ROLE_ARN` in the GitHub `production` environment. Full setup steps are in the root [GitHub Secrets & CI Deploy](../README.md#github-secrets--ci-deploy) section.
 
 ## Architecture Diagram
 
@@ -35,28 +64,46 @@ flowchart TD
     subgraph AWS [AWS Cloud]
         subgraph VPC [VPC 10.0.0.0/16]
             IGW[Internet Gateway]
-            
+
             subgraph Public [Public Subnet 10.0.1.0/24]
-                EC2[EC2 Instance al2023-arm64]
-                Nginx[Nginx Server]
-                IAM[IAM Role CloudWatch]
-                
-                EC2 --- Nginx
-                EC2 --- IAM
+                EC2[EC2 al2023-x86_64]
+                Docker[Docker]
+                App[cloud-status-api]
+                SSM[SSM Agent]
+                EC2Profile[IAM Instance Profile]
+
+                EC2 --- Docker
+                Docker --- App
+                EC2 --- SSM
+                EC2 --- EC2Profile
             end
-            
+
             subgraph Private [Private Subnet 10.0.2.0/24]
                 Locked[Isolated resources]
             end
-            
+
             IGW <--> Public
             Public -.-> Private
         end
+
+        OIDC[GitHub OIDC Provider]
+        DeployRole[github-actions-deploy role]
+        OIDC --> DeployRole
+        DeployRole -->|"SSM Run Command"| SSM
     end
 ```
 
+Production traffic hits the container on host port **80** (mapped to container port **8000**). During rolling deploys, staging uses host port **8080**.
+
 ## Security Considerations
 
-* **IAM Roles over Static Credentials:** Compute resources use instance profiles mapped strictly to defined policies.
-* **Instance Metadata Service:** Implemented `http_tokens = "required"` (IMDSv2) to prevent SSRF vulnerabilities.
-* **State File Security:** Remote S3 bucket is utilized to stop sensitive infrastructure information, passwords, and IDs from leaking.
+* **IAM roles over static credentials:** EC2 uses instance profiles; GitHub Actions uses OIDC with no long-lived AWS keys.
+* **Instance metadata service:** `http_tokens = "required"` (IMDSv2) on the EC2 instance to mitigate SSRF.
+* **State file security:** Remote S3 backend keeps sensitive infrastructure data out of the repo.
+* **SSH restricted:** Port 22 limited to your `allowed_cidr`; CI deploys via SSM instead.
+
+## Related Docs
+
+* **Application API** — [`app/README.md`](../app/README.md)
+* **CLI deploy and validation** — [`cloudctl/README.md`](../cloudctl/README.md)
+* **CI/CD setup and workflow** — [`README.md`](../README.md#github-secrets--ci-deploy)
