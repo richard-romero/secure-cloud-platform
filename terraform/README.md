@@ -60,40 +60,31 @@ Set that value as `AWS_ROLE_ARN` in the GitHub `production` environment. Full se
 ## Architecture Diagram
 
 ```mermaid
-flowchart TD
-    subgraph AWS [AWS Cloud]
-        subgraph VPC [VPC 10.0.0.0/16]
-            IGW[Internet Gateway]
+flowchart LR
+    subgraph CIAuth [GitHub Actions deploy auth]
+        OIDC[GitHub OIDC Provider] --> Role[github-actions-deploy role]
+    end
 
-            subgraph Public [Public Subnet 10.0.1.0/24]
-                EC2[EC2 al2023-x86_64]
-                Docker[Docker]
-                App[cloud-status-api]
-                SSM[SSM Agent]
-                EC2Profile[IAM Instance Profile]
+    subgraph VPC [VPC 10.0.0.0/16]
+        direction TB
+        IGW[Internet Gateway] <--> Pub[Public subnet 10.0.1.0/24]
+        Pub -.-> Priv[Private subnet 10.0.2.0/24]
 
-                EC2 --- Docker
-                Docker --- App
-                EC2 --- SSM
-                EC2 --- EC2Profile
-            end
-
-            subgraph Private [Private Subnet 10.0.2.0/24]
-                Locked[Isolated resources]
-            end
-
-            IGW <--> Public
-            Public -.-> Private
+        subgraph EC2Host [EC2 al2023-x86_64]
+            direction TB
+            Docker[Docker] --> App[cloud-status-api :80]
+            SSM[SSM Agent]
         end
 
-        OIDC[GitHub OIDC Provider]
-        DeployRole[github-actions-deploy role]
-        OIDC --> DeployRole
-        DeployRole -->|"SSM Run Command"| SSM
+        Profile[IAM instance profile]
+        Pub --> EC2Host
+        Profile -.-> EC2Host
     end
+
+    Role --> SSM
 ```
 
-Production traffic hits the container on host port **80** (mapped to container port **8000**). During rolling deploys, staging uses host port **8080**.
+HTTP traffic flows **Internet Gateway ↔ public subnet ↔ EC2** to reach the app. GitHub Actions assumes the deploy role via OIDC and sends commands **to the SSM Agent** running on the host (not from EC2 to SSM). During rolling deploys, staging uses host port **8080**; production serves on **80** (container port **8000**).
 
 ## Security Considerations
 

@@ -26,36 +26,36 @@ I built `cloudctl` to reduce developer friction when deploying AWS environments.
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph entry [Entry Points]
-        Dev[Developer]
-        GHA[GitHub Actions]
+flowchart TB
+    subgraph LocalDeploy [Local path — cloudctl deploy]
+        Dev[Developer] --> CLI[cloudctl CLI]
+        CLI --> InfraStep[Terraform apply]
+        CLI --> AppStep[SSH + deploy script]
     end
 
-    subgraph control [Control Plane]
-        Cloudctl[cloudctl CLI]
+    subgraph CIOnRelease [CI on Run workflow]
+        Release[Run workflow] --> TestRelease[test: pytest]
+        TestRelease --> BuildJob[build-and-push]
+        BuildJob --> DeployJob[deploy: OIDC + SSM]
     end
 
-    subgraph registry [Registry]
-        GHCR[GHCR cloud-status-api]
+    subgraph CIOnPush [CI on push to main]
+        Push[push to main] --> TestPush[test: pytest]
     end
 
-    subgraph aws [AWS]
-        EC2[EC2 Docker Host]
-        SSM[SSM Agent]
-        App[cloud-status-api :80]
-    end
+    GHCR[(GHCR image)]
+    EC2[EC2 Docker host]
+    App[cloud-status-api on :80]
 
-    Dev -->|cloudctl deploy| Cloudctl
-    Cloudctl -->|Terraform| EC2
-    Cloudctl -->|SSH + deploy script| EC2
-    GHA -->|pytest on push| GHA
-    GHA -->|build and push| GHCR
-    GHA -->|OIDC + SSM| SSM
-    SSM --> EC2
+    InfraStep --> EC2
+    AppStep --> EC2
+    BuildJob --> GHCR
+    DeployJob --> EC2
     GHCR -->|docker pull| EC2
     EC2 --> App
 ```
+
+**Push to main** runs tests only. **Run workflow** (manual) runs the full release pipeline: test, then build-and-push to GHCR, then deploy to EC2 via OIDC and SSM.
 
 ## Skills Demonstrated
 
